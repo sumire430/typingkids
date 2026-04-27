@@ -1,0 +1,1213 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>もじとキーボードであそぼう</title>
+
+    <!--
+      目的:
+      - 英語学習ではなく「文字とキーボードに親しむ」→「ローマ字入力」へつなぐ
+      方針:
+      - まずは"動く"ことを優先
+      - 問題データは配列で管理し、あとから追加しやすくする
+      - 失敗感が出ない言葉づかい（×/不正解/間違い などは使わない）
+
+      使い方:
+      - このファイルをブラウザで開くだけでOK（ビルド不要）
+      - キーボード入力を使うので、画面をクリックしてから遊ぶと安心
+    -->
+
+    <!-- Tailwind (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Tailwind の簡単なテーマ（パステル寄り）
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              cream: "#FFF7E8",
+              skyP: "#CFE9FF",
+              mintP: "#CFF7E3",
+              peachP: "#FFE0E9",
+              lemonP: "#FFF3BF",
+              ink: "#1F2937",
+            },
+            boxShadow: {
+              soft: "0 10px 30px rgba(31,41,55,0.10)",
+            },
+          },
+        },
+      };
+    </script>
+
+    <!-- React (UMD) + Babel (JSXをブラウザで変換) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  </head>
+
+  <body class="bg-cream text-ink">
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useEffect, useMemo, useRef, useState } = React;
+
+      // -----------------------------
+      // データ（あとから増やしやすい形）
+      // -----------------------------
+      const ALPHABETS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+
+      /*
+        ローマ字対応表（五十音＋濁点/半濁点まで）
+        - データは配列で管理（追加しやすい）
+        - ここは「基本の打ち方」を1つ置き、必要に応じて別の打ち方も受け付ける
+
+        例:
+        - し: shi / si
+        - ち: chi / ti
+        - つ: tsu / tu
+        - ふ: fu / hu
+        - じ: ji / zi
+        - ぢ: ji / di
+        - づ: zu / du
+        - を: wo / o
+        - ん: n / nn
+      */
+      const ROMAJI_MAP = [
+        // あ行
+        { hira: "あ", roma: "a" },
+        { hira: "い", roma: "i" },
+        { hira: "う", roma: "u" },
+        { hira: "え", roma: "e" },
+        { hira: "お", roma: "o" },
+
+        // か行
+        { hira: "か", roma: "ka" },
+        { hira: "き", roma: "ki" },
+        { hira: "く", roma: "ku" },
+        { hira: "け", roma: "ke" },
+        { hira: "こ", roma: "ko" },
+
+        // が行（濁点）
+        { hira: "が", roma: "ga" },
+        { hira: "ぎ", roma: "gi" },
+        { hira: "ぐ", roma: "gu" },
+        { hira: "げ", roma: "ge" },
+        { hira: "ご", roma: "go" },
+
+        // さ行
+        { hira: "さ", roma: "sa" },
+        { hira: "し", roma: "shi" },
+        { hira: "す", roma: "su" },
+        { hira: "せ", roma: "se" },
+        { hira: "そ", roma: "so" },
+
+        // ざ行（濁点）
+        { hira: "ざ", roma: "za" },
+        { hira: "じ", roma: "ji" },
+        { hira: "ず", roma: "zu" },
+        { hira: "ぜ", roma: "ze" },
+        { hira: "ぞ", roma: "zo" },
+
+        // た行
+        { hira: "た", roma: "ta" },
+        { hira: "ち", roma: "chi" },
+        { hira: "つ", roma: "tsu" },
+        { hira: "て", roma: "te" },
+        { hira: "と", roma: "to" },
+
+        // だ行（濁点）
+        { hira: "だ", roma: "da" },
+        { hira: "ぢ", roma: "ji" },
+        { hira: "づ", roma: "zu" },
+        { hira: "で", roma: "de" },
+        { hira: "ど", roma: "do" },
+
+        // な行
+        { hira: "な", roma: "na" },
+        { hira: "に", roma: "ni" },
+        { hira: "ぬ", roma: "nu" },
+        { hira: "ね", roma: "ne" },
+        { hira: "の", roma: "no" },
+
+        // は行
+        { hira: "は", roma: "ha" },
+        { hira: "ひ", roma: "hi" },
+        { hira: "ふ", roma: "fu" },
+        { hira: "へ", roma: "he" },
+        { hira: "ほ", roma: "ho" },
+
+        // ば行（濁点）
+        { hira: "ば", roma: "ba" },
+        { hira: "び", roma: "bi" },
+        { hira: "ぶ", roma: "bu" },
+        { hira: "べ", roma: "be" },
+        { hira: "ぼ", roma: "bo" },
+
+        // ぱ行（半濁点）
+        { hira: "ぱ", roma: "pa" },
+        { hira: "ぴ", roma: "pi" },
+        { hira: "ぷ", roma: "pu" },
+        { hira: "ぺ", roma: "pe" },
+        { hira: "ぽ", roma: "po" },
+
+        // ま行
+        { hira: "ま", roma: "ma" },
+        { hira: "み", roma: "mi" },
+        { hira: "む", roma: "mu" },
+        { hira: "め", roma: "me" },
+        { hira: "も", roma: "mo" },
+
+        // や行
+        { hira: "や", roma: "ya" },
+        { hira: "ゆ", roma: "yu" },
+        { hira: "よ", roma: "yo" },
+
+        // ら行
+        { hira: "ら", roma: "ra" },
+        { hira: "り", roma: "ri" },
+        { hira: "る", roma: "ru" },
+        { hira: "れ", roma: "re" },
+        { hira: "ろ", roma: "ro" },
+
+        // わ行
+        { hira: "わ", roma: "wa" },
+        { hira: "を", roma: "wo" },
+
+        // ん
+        { hira: "ん", roma: "n" },
+
+        // ---- 拗音（ようおん）----
+        // きゃ行
+        { hira: "きゃ", roma: "kya" },
+        { hira: "きゅ", roma: "kyu" },
+        { hira: "きょ", roma: "kyo" },
+
+        // ぎゃ行（濁点）
+        { hira: "ぎゃ", roma: "gya" },
+        { hira: "ぎゅ", roma: "gyu" },
+        { hira: "ぎょ", roma: "gyo" },
+
+        // しゃ行
+        { hira: "しゃ", roma: "sha" },
+        { hira: "しゅ", roma: "shu" },
+        { hira: "しょ", roma: "sho" },
+
+        // じゃ行（濁点）
+        { hira: "じゃ", roma: "ja" },
+        { hira: "じゅ", roma: "ju" },
+        { hira: "じょ", roma: "jo" },
+
+        // ちゃ行
+        { hira: "ちゃ", roma: "cha" },
+        { hira: "ちゅ", roma: "chu" },
+        { hira: "ちょ", roma: "cho" },
+
+        // にゃ行
+        { hira: "にゃ", roma: "nya" },
+        { hira: "にゅ", roma: "nyu" },
+        { hira: "にょ", roma: "nyo" },
+
+        // ひゃ行
+        { hira: "ひゃ", roma: "hya" },
+        { hira: "ひゅ", roma: "hyu" },
+        { hira: "ひょ", roma: "hyo" },
+
+        // びゃ行（濁点）
+        { hira: "びゃ", roma: "bya" },
+        { hira: "びゅ", roma: "byu" },
+        { hira: "びょ", roma: "byo" },
+
+        // ぴゃ行（半濁点）
+        { hira: "ぴゃ", roma: "pya" },
+        { hira: "ぴゅ", roma: "pyu" },
+        { hira: "ぴょ", roma: "pyo" },
+
+        // みゃ行
+        { hira: "みゃ", roma: "mya" },
+        { hira: "みゅ", roma: "myu" },
+        { hira: "みょ", roma: "myo" },
+
+        // りゃ行
+        { hira: "りゃ", roma: "rya" },
+        { hira: "りゅ", roma: "ryu" },
+        { hira: "りょ", roma: "ryo" },
+
+        // ---- 小さい文字（IMEでよく使う）----
+        { hira: "ぁ", roma: "xa" },
+        { hira: "ぃ", roma: "xi" },
+        { hira: "ぅ", roma: "xu" },
+        { hira: "ぇ", roma: "xe" },
+        { hira: "ぉ", roma: "xo" },
+        { hira: "ゃ", roma: "xya" },
+        { hira: "ゅ", roma: "xyu" },
+        { hira: "ょ", roma: "xyo" },
+        { hira: "っ", roma: "xtu" },
+        { hira: "ゎ", roma: "xwa" },
+
+        // ---- 追加の拗音・外来音っぽいもの（ひらがなで表せる範囲）----
+        // しぇ / ちぇ / じぇ
+        { hira: "しぇ", roma: "she" },
+        { hira: "ちぇ", roma: "che" },
+        { hira: "じぇ", roma: "je" },
+
+        // てぃ/でぃ/てゅ/でゅ
+        { hira: "てぃ", roma: "ti" },
+        { hira: "でぃ", roma: "di" },
+        { hira: "てゅ", roma: "tyu" },
+        { hira: "でゅ", roma: "dyu" },
+
+        // とぅ/どぅ
+        { hira: "とぅ", roma: "tu" },
+        { hira: "どぅ", roma: "du" },
+
+        // つぁ/つぃ/つぇ/つぉ
+        { hira: "つぁ", roma: "tsa" },
+        { hira: "つぃ", roma: "tsi" },
+        { hira: "つぇ", roma: "tse" },
+        { hira: "つぉ", roma: "tso" },
+
+        // ふぁ/ふぃ/ふぇ/ふぉ/ふゅ
+        { hira: "ふぁ", roma: "fa" },
+        { hira: "ふぃ", roma: "fi" },
+        { hira: "ふぇ", roma: "fe" },
+        { hira: "ふぉ", roma: "fo" },
+        { hira: "ふゅ", roma: "fyu" },
+
+        // すぁ/すぃ/すぅ/すぇ/すぉ（たまに使う）
+        { hira: "すぁ", roma: "swa" },
+        { hira: "すぃ", roma: "swi" },
+        { hira: "すぅ", roma: "swu" },
+        { hira: "すぇ", roma: "swe" },
+        { hira: "すぉ", roma: "swo" },
+
+        // くぁ/くぃ/くぇ/くぉ（kwa系）
+        { hira: "くぁ", roma: "kwa" },
+        { hira: "くぃ", roma: "kwi" },
+        { hira: "くぇ", roma: "kwe" },
+        { hira: "くぉ", roma: "kwo" },
+
+        // ぐぁ/ぐぃ/ぐぇ/ぐぉ（gwa系）
+        { hira: "ぐぁ", roma: "gwa" },
+        { hira: "ぐぃ", roma: "gwi" },
+        { hira: "ぐぇ", roma: "gwe" },
+        { hira: "ぐぉ", roma: "gwo" },
+
+        // うぁ/うぃ/うぇ/うぉ（wha/wi/we/who系）
+        { hira: "うぁ", roma: "wha" },
+        { hira: "うぃ", roma: "wi" },
+        { hira: "うぇ", roma: "we" },
+        { hira: "うぉ", roma: "who" },
+
+        // いぇ（ye）
+        { hira: "いぇ", roma: "ye" },
+
+        // ゔ（ヴ相当）
+        { hira: "ゔ", roma: "vu" },
+        { hira: "ゔぁ", roma: "va" },
+        { hira: "ゔぃ", roma: "vi" },
+        { hira: "ゔぇ", roma: "ve" },
+        { hira: "ゔぉ", roma: "vo" },
+        { hira: "ゔゅ", roma: "vyu" },
+        { hira: "ゔゃ", roma: "vya" },
+        { hira: "ゔょ", roma: "vyo" },
+
+        // ゐ/ゑ（古い表記だがローマ字入力で入れられる）
+        { hira: "ゐ", roma: "wi" },
+        { hira: "ゑ", roma: "we" },
+      ];
+
+      // 受け付けたい別の打ち方（IMEでよく使われる）
+      const ROMAJI_ALIASES = {
+        し: ["shi", "si"],
+        ち: ["chi", "ti"],
+        つ: ["tsu", "tu"],
+        ふ: ["fu", "hu"],
+        じ: ["ji", "zi"],
+        ぢ: ["ji", "di"],
+        づ: ["zu", "du"],
+        を: ["wo", "o"],
+        ん: ["n", "nn"],
+
+        // 拗音の別の打ち方（よくあるもの）
+        しゃ: ["sha", "sya"],
+        しゅ: ["shu", "syu"],
+        しょ: ["sho", "syo"],
+
+        ちゃ: ["cha", "tya", "cya"],
+        ちゅ: ["chu", "tyu", "cyu"],
+        ちょ: ["cho", "tyo", "cyo"],
+
+        じゃ: ["ja", "jya", "zya"],
+        じゅ: ["ju", "jyu", "zyu"],
+        じょ: ["jo", "jyo", "zyo"],
+
+        // 小さい文字（x / l どちらでもOKに）
+        ぁ: ["xa", "la"],
+        ぃ: ["xi", "li", "xyi", "lyi"],
+        ぅ: ["xu", "lu"],
+        ぇ: ["xe", "le"],
+        ぉ: ["xo", "lo"],
+        ゃ: ["xya", "lya"],
+        ゅ: ["xyu", "lyu"],
+        ょ: ["xyo", "lyo"],
+        っ: ["xtu", "ltu", "xtsu", "ltsu"],
+        ゎ: ["xwa", "lwa"],
+
+        // 追加の音（別の打ち方があるものだけ）
+        しぇ: ["she", "sye"],
+        ちぇ: ["che", "tye", "cye"],
+        じぇ: ["je", "jye", "zye"],
+
+        てぃ: ["ti", "tei", "texi", "teli"],
+        でぃ: ["di", "dexi", "deli"],
+        てゅ: ["tyu", "teyu"],
+        でゅ: ["dyu", "deyu"],
+
+        とぅ: ["tu", "twu"],
+        どぅ: ["du", "dwu"],
+
+        つぁ: ["tsa", "tuxa", "tsuxa", "ltusa", "xtusa"],
+        つぃ: ["tsi", "tuxi", "tsuxi"],
+        つぇ: ["tse", "tuxe", "tsuxe"],
+        つぉ: ["tso", "tuxo", "tsuxo"],
+
+        ふぁ: ["fa", "fwa", "huxa", "hula"],
+        ふぃ: ["fi", "fwi", "huxi", "huli"],
+        ふぇ: ["fe", "fwe", "huxe", "hule"],
+        ふぉ: ["fo", "fwo", "huxo", "hulo"],
+
+        ゔ: ["vu"],
+        ゔぁ: ["va"],
+        ゔぃ: ["vi"],
+        ゔぇ: ["ve"],
+        ゔぉ: ["vo"],
+      };
+
+      // アプリ側で使う形式（answers は候補配列）
+      const ROMAJI_ITEMS = ROMAJI_MAP.map((x) => {
+        const primary = String(x.roma).toLowerCase();
+        const candidates = ROMAJI_ALIASES[x.hira]
+          ? ROMAJI_ALIASES[x.hira].map((s) => s.toLowerCase())
+          : [primary];
+        // primary が先頭になるように整える
+        const answers = [primary, ...candidates.filter((c) => c !== primary)];
+        return { kana: x.hira, answers };
+      });
+
+      // タイピングチャレンジに出す問題（まずはローマ字れんしゅう分でOK）
+      const CHALLENGE_ITEMS = ROMAJI_ITEMS.map((x) => ({
+        label: `${x.kana}`,
+        answers: x.answers,
+        hint: x.answers.length > 1 ? `${x.kana} は「${x.answers[0]}」（ほか: ${x.answers.slice(1).join(" / ")}）` : `${x.kana} は「${x.answers[0]}」`,
+      }));
+
+      const HAPPY_MESSAGES = [
+        "すごい！",
+        "できたね！",
+        "いいね！",
+        "そのちょうし！",
+        "もう1こやってみよう！",
+        "キラキラ！",
+      ];
+
+      const TRY_AGAIN_MESSAGES = [
+        "おしい！",
+        "もういちどやってみよう",
+        "ゆっくりでだいじょうぶ",
+        "あとちょっと！",
+      ];
+
+      // -----------------------------
+      // 小さな便利関数
+      // -----------------------------
+      function pickRandom(arr) {
+        return arr[Math.floor(Math.random() * arr.length)];
+      }
+
+      function kataToHira(str) {
+        // カタカナをひらがなに（日本語キーボード入力のゆれ対策）
+        return String(str).replace(/[\u30a1-\u30f6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+      }
+
+      function normalizeKeyToChar(e) {
+        // 子どもが使いやすいように、アルファベット1文字・スペース・バックスペースだけ扱う
+        if (e.key === "Backspace") return { type: "backspace" };
+        if (e.key === "Enter") return { type: "enter" };
+        if (e.key === " ") return { type: "char", char: " " };
+        if (e.key.length === 1) {
+          const ch = e.key;
+          // 英数字記号が来るので、まずは英字のみ採用（ローマ字入力の練習に寄せる）
+          if (/^[a-zA-Z]$/.test(ch)) return { type: "char", char: ch.toLowerCase() };
+        }
+        return null;
+      }
+
+      // -----------------------------
+      // UIパーツ
+      // -----------------------------
+      function Card({ children, className = "" }) {
+        return (
+          <div className={"rounded-3xl bg-white/85 shadow-soft border border-white/70 " + className}>
+            {children}
+          </div>
+        );
+      }
+
+      function BigButton({ children, onClick, tone = "sky" }) {
+        const toneClass =
+          tone === "sky"
+            ? "bg-skyP hover:bg-[#BFE1FF]"
+            : tone === "mint"
+              ? "bg-mintP hover:bg-[#BCEFD6]"
+              : tone === "peach"
+                ? "bg-peachP hover:bg-[#FFD1DE]"
+                : "bg-lemonP hover:bg-[#FFEAA0]";
+
+        return (
+          <button
+            onClick={onClick}
+            className={
+              "w-full rounded-3xl px-6 py-5 text-xl sm:text-2xl font-bold tracking-wide " +
+              "shadow-soft border border-white/70 active:scale-[0.99] transition " +
+              toneClass
+            }
+          >
+            {children}
+          </button>
+        );
+      }
+
+      function Pill({ label, value, tone = "lemon" }) {
+        const toneClass =
+          tone === "lemon"
+            ? "bg-lemonP"
+            : tone === "mint"
+              ? "bg-mintP"
+              : tone === "sky"
+                ? "bg-skyP"
+                : "bg-peachP";
+        return (
+          <div className={"rounded-2xl px-4 py-3 " + toneClass + " border border-white/70"}>
+            <div className="text-xs sm:text-sm font-bold opacity-70">{label}</div>
+            <div className="text-lg sm:text-xl font-extrabold">{value}</div>
+          </div>
+        );
+      }
+
+      function TopBar({ title, onHome }) {
+        return (
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-2xl bg-white/80 border border-white/70 shadow-soft grid place-items-center text-2xl">
+                ⌨️
+              </div>
+              <div>
+                <div className="text-lg sm:text-xl font-extrabold">{title}</div>
+                <div className="text-xs sm:text-sm opacity-70">もじとキーボードとなかよくなろう</div>
+              </div>
+            </div>
+            <button
+              onClick={onHome}
+              className="rounded-2xl px-4 py-3 bg-white/80 border border-white/70 shadow-soft font-bold hover:bg-white transition"
+            >
+              おうちへ 🏠
+            </button>
+          </div>
+        );
+      }
+
+      function InputBubble({ text, placeholder = "（ここにでるよ）" }) {
+        return (
+          <div className="rounded-3xl bg-white/80 border border-white/70 shadow-soft px-6 py-5">
+            <div className="text-sm font-bold opacity-70 mb-2">いま うっている もじ</div>
+            <div className="text-3xl sm:text-4xl font-extrabold tracking-widest min-h-[2.5rem]">
+              {text && text.length ? text : <span className="opacity-30">{placeholder}</span>}
+            </div>
+          </div>
+        );
+      }
+
+      function useCoarsePointer() {
+        const [isCoarse, setIsCoarse] = useState(false);
+        useEffect(() => {
+          const mq = window.matchMedia ? window.matchMedia("(pointer: coarse)") : null;
+          const update = () => setIsCoarse(Boolean(mq && mq.matches));
+          update();
+          if (!mq) return;
+          if (mq.addEventListener) mq.addEventListener("change", update);
+          else mq.addListener(update);
+          return () => {
+            if (mq.removeEventListener) mq.removeEventListener("change", update);
+            else mq.removeListener(update);
+          };
+        }, []);
+        return isCoarse;
+      }
+
+      function VirtualKeyboard({
+        onKey,
+        showSpace = false,
+        className = "",
+      }) {
+        const rows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"];
+
+        const keyBtn =
+          "select-none rounded-2xl border border-white/70 bg-white/80 shadow-soft " +
+          "active:scale-[0.99] transition px-3 py-3 sm:px-4 sm:py-3 text-lg sm:text-xl font-extrabold";
+
+        const specialBtn =
+          "select-none rounded-2xl border border-white/70 bg-lemonP/70 shadow-soft " +
+          "active:scale-[0.99] transition px-3 py-3 sm:px-4 sm:py-3 text-base sm:text-lg font-extrabold";
+
+        const handlePointer = (fn) => (e) => {
+          // iPadでの「長押し選択」などを避け、タップをキー入力として扱う
+          e.preventDefault();
+          fn();
+        };
+
+        return (
+          <div className={"rounded-3xl bg-white/60 border border-white/70 p-3 sm:p-4 " + className}>
+            <div className="text-xs sm:text-sm font-bold opacity-70 mb-2">タッチでも うてるよ 👇</div>
+            <div className="space-y-2">
+              {rows.map((r) => (
+                <div key={r} className="flex gap-2 justify-center">
+                  {r.split("").map((ch) => (
+                    <button
+                      key={ch}
+                      className={keyBtn + " min-w-[2.7rem] sm:min-w-[3.1rem]"}
+                      onPointerDown={handlePointer(() => onKey({ type: "char", char: ch }))}
+                    >
+                      {ch.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              ))}
+
+              <div className="flex gap-2 justify-center">
+                <button
+                  className={specialBtn + " w-28 sm:w-36"}
+                  onPointerDown={handlePointer(() => onKey({ type: "backspace" }))}
+                >
+                  けす ⌫
+                </button>
+                {showSpace ? (
+                  <button
+                    className={specialBtn + " flex-1 max-w-[20rem]"}
+                    onPointerDown={handlePointer(() => onKey({ type: "char", char: " " }))}
+                  >
+                    スペース
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // -----------------------------
+      // 画面: ホーム
+      // -----------------------------
+      function Home({ go }) {
+        return (
+          <div className="max-w-3xl mx-auto p-4 sm:p-6">
+            <Card className="p-5 sm:p-7">
+              <div className="flex items-center gap-4">
+                <div className="h-14 w-14 rounded-3xl bg-skyP border border-white/70 shadow-soft grid place-items-center text-3xl">
+                  🐣
+                </div>
+                <div>
+                  <div className="text-2xl sm:text-3xl font-extrabold">もじとキーボードで あそぼう</div>
+                  <div className="text-sm sm:text-base opacity-70 mt-1">
+                    まずは たのしく おしてみよう。ゆっくりで だいじょうぶ。
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                <BigButton onClick={() => go("alphabet")} tone="sky">
+                  アルファベットであそぶ 🔤
+                </BigButton>
+                <BigButton onClick={() => go("romajiType")} tone="mint">
+                  ローマじ れんしゅう（うつ）🌷
+                </BigButton>
+                <BigButton onClick={() => go("romajiRead")} tone="lemon">
+                  ローマじ れんしゅう（よむ）👀
+                </BigButton>
+                <BigButton onClick={() => go("words")} tone="peach">
+                  タイピングれんしゅう（たんご）🍡
+                </BigButton>
+              </div>
+
+              <div className="mt-6 rounded-3xl bg-white/70 border border-white/70 p-4">
+                <div className="text-sm font-bold mb-1">あそびかた</div>
+                <ul className="text-sm opacity-80 space-y-1">
+                  <li>・まずは 画面を 1かい クリックしてから キーを おすと うまくいきやすいよ</li>
+                  <li>・うまくいかなくても だいじょうぶ。もういちど ゆっくりやってみよう</li>
+                </ul>
+              </div>
+            </Card>
+          </div>
+        );
+      }
+
+      // -----------------------------
+      // 共通: キー入力を聞く（画面ごとに使う）
+      // -----------------------------
+      function useTypingListener(enabled, onKey) {
+        useEffect(() => {
+          if (!enabled) return;
+          const handler = (e) => {
+            const info = normalizeKeyToChar(e);
+            if (!info) return;
+            // ブラウザの戻るなどを少しだけ防ぐ（Backspaceなど）
+            if (info.type === "backspace") e.preventDefault();
+            onKey(info);
+          };
+          window.addEventListener("keydown", handler);
+          return () => window.removeEventListener("keydown", handler);
+        }, [enabled, onKey]);
+      }
+
+      // -----------------------------
+      // 画面: アルファベットであそぶ
+      // -----------------------------
+      function AlphabetPlay({ onHome }) {
+        const isCoarse = useCoarsePointer();
+        const [target, setTarget] = useState(() => pickRandom(ALPHABETS));
+        const [lastPressed, setLastPressed] = useState("");
+        const [message, setMessage] = useState("キーボードで おしてみよう！");
+        const [sparkle, setSparkle] = useState(0);
+
+        const next = () => {
+          setTarget(pickRandom(ALPHABETS));
+          setLastPressed("");
+          setMessage("つぎの もじは なにかな？");
+        };
+
+        const handleKey = (info) => {
+          if (info.type !== "char") return;
+          const pressedUpper = info.char.toUpperCase();
+          setLastPressed(pressedUpper);
+
+          if (pressedUpper === target) {
+            setMessage(pickRandom(HAPPY_MESSAGES));
+            setSparkle((x) => x + 1);
+            // 少し待って次へ（テンポよく）
+            setTimeout(() => next(), 650);
+          } else {
+            setMessage(pickRandom(TRY_AGAIN_MESSAGES));
+          }
+        };
+
+        useTypingListener(true, handleKey);
+
+        return (
+          <div className="max-w-3xl mx-auto p-4 sm:p-6">
+            <TopBar title="アルファベットであそぶ 🔤" onHome={onHome} />
+            <div className="grid grid-cols-1 gap-4">
+              <Card className="p-6 sm:p-8">
+                <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-stretch">
+                  <div className="flex-1">
+                    <div className="text-sm font-bold opacity-70">この もじを おしてね</div>
+                    <div className="mt-3 rounded-3xl bg-skyP/70 border border-white/70 shadow-soft p-6 sm:p-8 grid place-items-center">
+                      <div className="text-7xl sm:text-8xl font-black tracking-widest">{target}</div>
+                    </div>
+                  </div>
+
+                  <div className="w-full sm:w-80 flex flex-col gap-4">
+                    <Pill label="キラキラ" value={"✨".repeat(Math.min(5, sparkle % 6)) || "✨"} tone="lemon" />
+                    <div className="rounded-3xl bg-white/80 border border-white/70 shadow-soft px-5 py-4">
+                      <div className="text-sm font-bold opacity-70">いま おした もじ</div>
+                      <div className="text-4xl font-extrabold mt-1 min-h-[3rem]">
+                        {lastPressed ? lastPressed : <span className="opacity-30">（まだだよ）</span>}
+                      </div>
+                    </div>
+                    <BigButton onClick={next} tone="mint">
+                      つぎへ ▶
+                    </BigButton>
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-3xl bg-white/70 border border-white/70 p-4">
+                  <div className="text-lg sm:text-xl font-extrabold">{message} 🌈</div>
+                  <div className="text-sm opacity-70 mt-1">ヒント：Shift は つかわなくても だいじょうぶ（小文字でもOK）</div>
+                </div>
+
+                {isCoarse ? (
+                  <div className="mt-4">
+                    <VirtualKeyboard onKey={handleKey} showSpace={false} />
+                  </div>
+                ) : null}
+              </Card>
+            </div>
+          </div>
+        );
+      }
+
+      // -----------------------------
+      // 画面: ローマ字れんしゅう（うつ）
+      // -----------------------------
+      function RomajiPractice({ onHome }) {
+        const isCoarse = useCoarsePointer();
+        const [idx, setIdx] = useState(() => Math.floor(Math.random() * ROMAJI_ITEMS.length));
+        const [typed, setTyped] = useState("");
+        const [message, setMessage] = useState("ローマじで うってみよう！");
+        const [okCount, setOkCount] = useState(0);
+
+        const item = ROMAJI_ITEMS[idx];
+        const primaryAnswer = item.answers[0];
+
+        const next = () => {
+          // 同じのが続きにくいようにちょっと工夫
+          let nextIdx = Math.floor(Math.random() * ROMAJI_ITEMS.length);
+          if (ROMAJI_ITEMS.length > 1 && nextIdx === idx) nextIdx = (nextIdx + 1) % ROMAJI_ITEMS.length;
+          setIdx(nextIdx);
+          setTyped("");
+          setMessage("つぎも やってみよう！");
+        };
+
+        const handleKey = (info) => {
+          if (info.type === "backspace") {
+            setTyped((t) => t.slice(0, -1));
+            return;
+          }
+          if (info.type !== "char") return;
+
+          setTyped((prev) => {
+            const nextTyped = (prev + info.char).toLowerCase();
+
+            // 途中チェック（合ってる方向ならそのまま）
+            const isOnTrack = item.answers.some((a) => a.startsWith(nextTyped));
+            if (isOnTrack) {
+              // 完全一致なら正解として次へ
+              const isDone = item.answers.some((a) => a === nextTyped);
+              if (isDone) {
+                setMessage(pickRandom(HAPPY_MESSAGES));
+                setOkCount((c) => c + 1);
+                setTimeout(() => next(), 650);
+              } else {
+                setMessage("いいね、そのまま！");
+              }
+              return nextTyped;
+            }
+
+            // 方向がズレたときは、いったん入力を戻してやさしく促す
+            setMessage(pickRandom(TRY_AGAIN_MESSAGES));
+            return prev; // 変えない（増やさない）
+          });
+        };
+
+        useTypingListener(true, handleKey);
+
+        return (
+          <div className="max-w-3xl mx-auto p-4 sm:p-6">
+            <TopBar title="ローマじ れんしゅう（うつ）🌷" onHome={onHome} />
+            <Card className="p-6 sm:p-8">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
+                  <div className="text-sm font-bold opacity-70">この ひらがな を ローマじで うってね</div>
+                  <div className="mt-3 rounded-3xl bg-mintP/70 border border-white/70 shadow-soft p-6 sm:p-8 grid place-items-center">
+                    <div className="text-7xl sm:text-8xl font-black">{item.kana}</div>
+                  </div>
+                  <div className="mt-4">
+                    <InputBubble text={typed} placeholder="a / ka / shi など" />
+                  </div>
+                  {isCoarse ? (
+                    <div className="mt-4">
+                      <VirtualKeyboard onKey={handleKey} />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <Pill label="できた数" value={`${okCount}`} tone="lemon" />
+                  <div className="rounded-3xl bg-white/80 border border-white/70 shadow-soft p-4">
+                    <div className="text-sm font-bold opacity-70">ヒント</div>
+                    <div className="text-lg font-extrabold mt-1">
+                      {item.kana} は「{primaryAnswer}」
+                    </div>
+                    {item.answers.length > 1 ? (
+                      <div className="text-sm opacity-70 mt-1">ほか: {item.answers.slice(1).join(" / ")}</div>
+                    ) : null}
+                    <div className="text-sm opacity-70 mt-2">Backspace で けせるよ</div>
+                  </div>
+                  <BigButton onClick={next} tone="sky">
+                    つぎへ ▶
+                  </BigButton>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-3xl bg-white/70 border border-white/70 p-4">
+                <div className="text-lg sm:text-xl font-extrabold">{message} 🌼</div>
+                <div className="text-sm opacity-70 mt-1">コツ：まずは ゆっくり「a」「k」「s」などを たしかめながらでOK</div>
+              </div>
+            </Card>
+          </div>
+        );
+      }
+
+      // -----------------------------
+      // 画面: ローマ字れんしゅう（よむ）
+      // -----------------------------
+      function RomajiReadPractice({ onHome }) {
+        const [idx, setIdx] = useState(() => Math.floor(Math.random() * ROMAJI_ITEMS.length));
+        const [answer, setAnswer] = useState("");
+        const [message, setMessage] = useState("ローマじを みて、ひらがなで こたえてね！");
+        const [count, setCount] = useState(0);
+        const inputRef = useRef(null);
+
+        const item = ROMAJI_ITEMS[idx];
+        const primaryAnswer = item.answers[0];
+
+        const next = () => {
+          let nextIdx = Math.floor(Math.random() * ROMAJI_ITEMS.length);
+          if (ROMAJI_ITEMS.length > 1 && nextIdx === idx) nextIdx = (nextIdx + 1) % ROMAJI_ITEMS.length;
+          setIdx(nextIdx);
+          setAnswer("");
+          setMessage("つぎも やってみよう！");
+          setTimeout(() => inputRef.current && inputRef.current.focus(), 0);
+        };
+
+        const check = (raw) => {
+          const normalized = kataToHira(String(raw || "")).trim();
+          if (!normalized.length) return;
+          if (normalized === item.kana) {
+            setMessage(pickRandom(HAPPY_MESSAGES));
+            setCount((c) => c + 1);
+            setTimeout(() => next(), 650);
+          } else {
+            setMessage(pickRandom(TRY_AGAIN_MESSAGES));
+          }
+        };
+
+        useEffect(() => {
+          setTimeout(() => inputRef.current && inputRef.current.focus(), 0);
+        }, []);
+
+        return (
+          <div className="max-w-3xl mx-auto p-4 sm:p-6">
+            <TopBar title="ローマじ れんしゅう（よむ）👀" onHome={onHome} />
+            <Card className="p-6 sm:p-8">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
+                  <div className="text-sm font-bold opacity-70">この ローマじ を みてね</div>
+                  <div className="mt-3 rounded-3xl bg-lemonP/70 border border-white/70 shadow-soft p-6 sm:p-8 grid place-items-center">
+                    <div className="text-6xl sm:text-7xl font-black tracking-widest">{primaryAnswer}</div>
+                  </div>
+
+                  <div className="mt-4 rounded-3xl bg-white/80 border border-white/70 shadow-soft px-6 py-5">
+                    <div className="text-sm font-bold opacity-70 mb-2">ひらがなで こたえてね（日本語キーボード）</div>
+                    <input
+                      ref={inputRef}
+                      value={answer}
+                      onChange={(e) => setAnswer(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") check(answer);
+                      }}
+                      className="w-full rounded-3xl bg-white/90 border border-white/70 shadow-soft px-6 py-5 text-3xl sm:text-4xl font-extrabold tracking-widest outline-none focus:ring-4 focus:ring-skyP/40"
+                      placeholder="たとえば：きゃ / し / つ など"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                    />
+                    <div className="mt-3 flex gap-3">
+                      <button
+                        onClick={() => {
+                          setAnswer("");
+                          setMessage("ゆっくりで だいじょうぶ！");
+                          setTimeout(() => inputRef.current && inputRef.current.focus(), 0);
+                        }}
+                        className="rounded-2xl px-4 py-3 bg-white/80 border border-white/70 shadow-soft font-bold hover:bg-white transition"
+                      >
+                        けす ⌫
+                      </button>
+                      <button
+                        onClick={() => check(answer)}
+                        className="flex-1 rounded-2xl px-4 py-3 bg-skyP border border-white/70 shadow-soft font-extrabold hover:bg-[#BFE1FF] transition"
+                      >
+                        こたえる ▶
+                      </button>
+                    </div>
+                    <div className="text-xs opacity-60 mt-2">ヒント：入力が出ないときは、枠をタップしてから日本語キーボードにしてね</div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <Pill label="よめた数" value={`${count}`} tone="mint" />
+                  <BigButton onClick={next} tone="peach">
+                    つぎへ ▶
+                  </BigButton>
+                  <div className="rounded-3xl bg-white/80 border border-white/70 shadow-soft p-4">
+                    <div className="text-sm font-bold opacity-70">ヒント</div>
+                    <div className="text-lg font-extrabold mt-1">
+                      こたえ：{item.kana}
+                    </div>
+                    <div className="text-xs opacity-60 mt-1">（むずかしいときだけ みてね）</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-3xl bg-white/70 border border-white/70 p-4">
+                <div className="text-lg sm:text-xl font-extrabold">{message} 🌟</div>
+                <div className="text-sm opacity-70 mt-1">ローマじ → ひらがな を つなげて みよう</div>
+              </div>
+            </Card>
+          </div>
+        );
+      }
+
+      // -----------------------------
+      // 画面: タイピングれんしゅう（たんご）
+      // -----------------------------
+      const WORD_ITEMS = [
+        // ひらがな表記と、入力したいローマ字（小文字）を用意（増やしやすい）
+        { jp: "ねこ", answers: ["neko"] },
+        { jp: "いぬ", answers: ["inu"] },
+        { jp: "さかな", answers: ["sakana"] },
+        { jp: "やま", answers: ["yama"] },
+        { jp: "かわ", answers: ["kawa"] },
+        { jp: "はな", answers: ["hana"] },
+        { jp: "ほし", answers: ["hoshi"] },
+        { jp: "つき", answers: ["tsuki", "tuki"] },
+        { jp: "あめ", answers: ["ame"] },
+        { jp: "ゆき", answers: ["yuki"] },
+        { jp: "おにぎり", answers: ["onigiri"] },
+        { jp: "さくら", answers: ["sakura"] },
+        { jp: "ひこうき", answers: ["hikouki"] },
+        { jp: "しゃしん", answers: ["shashin", "syasin"] },
+        { jp: "ちゃわん", answers: ["chawan", "tyawan"] },
+        { jp: "りんご", answers: ["ringo"] },
+        { jp: "ぶどう", answers: ["budou"] },
+        { jp: "ぴあの", answers: ["piano"] },
+        { jp: "ぎゅうにゅう", answers: ["gyuunyuu"] },
+        { jp: "きゃべつ", answers: ["kyabetsu"] },
+      ];
+
+      function WordTypingPractice({ onHome }) {
+        const isCoarse = useCoarsePointer();
+        const [q, setQ] = useState(() => pickRandom(WORD_ITEMS));
+        const [typed, setTyped] = useState("");
+        const [count, setCount] = useState(0);
+        const [message, setMessage] = useState("たんごを ローマじで うってみよう！");
+
+        const next = () => {
+          setQ(pickRandom(WORD_ITEMS));
+          setTyped("");
+          setMessage("つぎの たんご！");
+        };
+
+        const handleKey = (info) => {
+          if (info.type === "backspace") {
+            setTyped((t) => t.slice(0, -1));
+            return;
+          }
+          if (info.type !== "char") return;
+
+          setTyped((prev) => {
+            const nextTyped = (prev + info.char).toLowerCase();
+            const isOnTrack = q.answers.some((a) => a.startsWith(nextTyped));
+            if (isOnTrack) {
+              const isDone = q.answers.some((a) => a === nextTyped);
+              if (isDone) {
+                setMessage(pickRandom(HAPPY_MESSAGES));
+                setCount((c) => c + 1);
+                setTimeout(() => next(), 650);
+              } else {
+                setMessage("いいね、そのまま！");
+              }
+              return nextTyped;
+            }
+            setMessage(pickRandom(TRY_AGAIN_MESSAGES));
+            return prev;
+          });
+        };
+
+        useTypingListener(true, handleKey);
+
+        const hint = q.answers.length > 1 ? `${q.answers[0]}（ほか: ${q.answers.slice(1).join(" / ")}）` : q.answers[0];
+
+        return (
+          <div className="max-w-3xl mx-auto p-4 sm:p-6">
+            <TopBar title="タイピングれんしゅう（たんご）🍡" onHome={onHome} />
+            <Card className="p-6 sm:p-8">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
+                  <div className="text-sm font-bold opacity-70">この たんごを うってね</div>
+                  <div className="mt-3 rounded-3xl bg-peachP/70 border border-white/70 shadow-soft p-6 sm:p-8 grid place-items-center">
+                    <div className="text-6xl sm:text-7xl font-black">{q.jp}</div>
+                  </div>
+                  <div className="mt-4">
+                    <InputBubble text={typed} placeholder="ローマじで うってみよう" />
+                  </div>
+                  {isCoarse ? (
+                    <div className="mt-4">
+                      <VirtualKeyboard onKey={handleKey} />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <Pill label="できた数" value={`${count}`} tone="lemon" />
+                  <div className="rounded-3xl bg-white/80 border border-white/70 shadow-soft p-4">
+                    <div className="text-sm font-bold opacity-70">ヒント</div>
+                    <div className="text-lg font-extrabold mt-1">{hint}</div>
+                    <div className="text-sm opacity-70 mt-2">Backspace で けせるよ</div>
+                  </div>
+                  <BigButton onClick={next} tone="mint">
+                    つぎへ ▶
+                  </BigButton>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-3xl bg-white/70 border border-white/70 p-4">
+                <div className="text-lg sm:text-xl font-extrabold">{message} 🍀</div>
+                <div className="text-sm opacity-70 mt-1">ゆっくりでOK。つぎの 1もじだけ みて うとう</div>
+              </div>
+            </Card>
+          </div>
+        );
+      }
+
+      // -----------------------------
+      // 画面: タイピングチャレンジ
+      // -----------------------------
+      function TypingChallenge({ onHome }) {
+        const isCoarse = useCoarsePointer();
+        const [q, setQ] = useState(() => pickRandom(CHALLENGE_ITEMS));
+        const [typed, setTyped] = useState("");
+        const [streak, setStreak] = useState(0);
+        const [stars, setStars] = useState(0);
+        const [message, setMessage] = useState("れんぞくで できるかな？");
+
+        const next = () => {
+          setQ(pickRandom(CHALLENGE_ITEMS));
+          setTyped("");
+          setMessage("よーい、どん！");
+        };
+
+        const handleKey = (info) => {
+          if (info.type === "backspace") {
+            setTyped((t) => t.slice(0, -1));
+            return;
+          }
+          if (info.type !== "char") return;
+
+          setTyped((prev) => {
+            const nextTyped = (prev + info.char).toLowerCase();
+
+            const isOnTrack = q.answers.some((a) => a.startsWith(nextTyped));
+            if (isOnTrack) {
+              const isDone = q.answers.some((a) => a === nextTyped);
+              if (isDone) {
+                setMessage(pickRandom(HAPPY_MESSAGES));
+                setStreak((s) => {
+                  const nextStreak = s + 1;
+                  if (nextStreak % 3 === 0) setStars((st) => st + 1);
+                  return nextStreak;
+                });
+                setTimeout(() => next(), 650);
+              } else {
+                setMessage("いいね！そのまま！");
+              }
+              return nextTyped;
+            }
+
+            // ズレた時は、続けて入力しない設計（打ち直しやすく）
+            setMessage(pickRandom(TRY_AGAIN_MESSAGES));
+            return prev;
+          });
+        };
+
+        useTypingListener(true, handleKey);
+
+        const starText = "⭐".repeat(Math.min(8, stars)) || "—";
+
+        return (
+          <div className="max-w-3xl mx-auto p-4 sm:p-6">
+            <TopBar title="タイピングチャレンジ ⭐" onHome={onHome} />
+            <Card className="p-6 sm:p-8">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="sm:col-span-2">
+                  <div className="text-sm font-bold opacity-70">いまの もんだい</div>
+                  <div className="mt-3 rounded-3xl bg-peachP/70 border border-white/70 shadow-soft p-6 sm:p-8">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-6xl sm:text-7xl font-black">{q.label}</div>
+                        <div className="text-sm sm:text-base opacity-70 mt-2">{q.hint}</div>
+                      </div>
+                      <div className="text-4xl hidden sm:block">🎯</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <InputBubble text={typed} placeholder="ローマじで うってみよう" />
+                  </div>
+                  {isCoarse ? (
+                    <div className="mt-4">
+                      <VirtualKeyboard onKey={handleKey} />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <Pill label="せいかい" value={`${streak}`} tone="mint" />
+                  <Pill label="ほし（3こ せいかいで +1）" value={starText} tone="lemon" />
+                  <BigButton onClick={next} tone="sky">
+                    つぎの もんだい ▶
+                  </BigButton>
+                  <div className="rounded-3xl bg-white/80 border border-white/70 shadow-soft p-4">
+                    <div className="text-sm font-bold opacity-70">コツ</div>
+                    <div className="text-sm opacity-80 mt-1">
+                      あわてなくてOK。つぎの 1もじだけ みて うってみよう。
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-3xl bg-white/70 border border-white/70 p-4">
+                <div className="text-lg sm:text-xl font-extrabold">{message} 🎈</div>
+                <div className="text-sm opacity-70 mt-1">ズレたときは、いったん止めて もういちど ゆっくりでOK</div>
+              </div>
+            </Card>
+          </div>
+        );
+      }
+
+      // -----------------------------
+      // ルート
+      // -----------------------------
+      function App() {
+        const [mode, setMode] = useState("home"); // home | alphabet | romajiType | romajiRead | words
+
+        // iPad などでも "どこを押せばいいか" が分かりやすいように、背景をゆるくデコる
+        return (
+          <div className="min-h-screen">
+            <div className="fixed inset-0 -z-10 overflow-hidden">
+              <div className="absolute -top-24 -left-24 h-72 w-72 rounded-full bg-skyP/50 blur-2xl"></div>
+              <div className="absolute top-32 -right-24 h-72 w-72 rounded-full bg-mintP/50 blur-2xl"></div>
+              <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-peachP/50 blur-2xl"></div>
+            </div>
+
+            {mode === "home" && <Home go={setMode} />}
+            {mode === "alphabet" && <AlphabetPlay onHome={() => setMode("home")} />}
+            {mode === "romajiType" && <RomajiPractice onHome={() => setMode("home")} />}
+            {mode === "romajiRead" && <RomajiReadPractice onHome={() => setMode("home")} />}
+            {mode === "words" && <WordTypingPractice onHome={() => setMode("home")} />}
+
+            <div className="max-w-3xl mx-auto px-4 pb-10 text-xs opacity-60">
+              <div className="mt-6">
+                ちいさなヒント：キー入力がうまく入らないときは、画面のどこかを1回クリックしてからためしてね。iPadはタッチキーボードでもOK。
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById("root"));
+      root.render(<App />);
+    </script>
+  </body>
+</html>
+
